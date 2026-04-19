@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZERO PAZAR | Cloud</title>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
+    <style>
+        :root {
+            --bg: #0f172a; --card: #1e293b; --border: #334155; --text: #f8fafc;
+            --muted: #94a3b8; --primary: #388bfd; --success: #10b981; --danger: #ef4444;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+        body { background: var(--bg); color: var(--text); padding: 15px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .header { background: var(--card); padding: 20px; border-radius: 16px; margin-bottom: 15px; border: 1px solid var(--border); }
+        .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .gb-box input { width: 90px; background: rgba(0,0,0,0.3); border: 1px solid var(--primary); color: var(--primary); padding: 4px; border-radius: 6px; font-weight: bold; text-align: center; outline: none; }
+        .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .stat { background: rgba(0,0,0,0.2); padding: 12px; border-radius: 12px; text-align: center; }
+        .stat small { font-size: 0.7rem; color: var(--muted); display: block; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px; }
+        .filter-card { background: var(--card); padding: 15px; border-radius: 16px; margin-bottom: 15px; border: 1px solid var(--border); display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .input-card { background: var(--card); padding: 15px; border-radius: 16px; margin-bottom: 15px; border: 1px solid var(--border); position: relative; }
+        .input-row { display: grid; grid-template-columns: 2fr 1.2fr 1.2fr; gap: 8px; margin-bottom: 10px; }
+        input { background: var(--bg); border: 1px solid var(--border); color: white; padding: 12px; border-radius: 10px; outline: none; font-size: 14px; width: 100%; color-scheme: dark; }
+        .suggestions { position: absolute; background: #2d3748; border: 1px solid var(--border); border-radius: 8px; width: 45%; z-index: 100; max-height: 150px; overflow-y: auto; display: none; }
+        .suggestion-item { padding: 10px; cursor: pointer; border-bottom: 1px solid var(--border); }
+        .add-btn { background: var(--primary); color: white; border: none; padding: 14px; border-radius: 10px; font-weight: bold; cursor: pointer; width: 100%; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 15px; }
+        .tab { flex: 1; padding: 12px; text-align: center; background: var(--card); border-radius: 10px; cursor: pointer; border: 1px solid var(--border); color: var(--muted); font-weight: bold; }
+        .tab.active { background: var(--primary); color: white; }
+        .item-card { background: var(--card); padding: 15px; border-radius: 16px; margin-bottom: 10px; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .item-result { text-align: right; flex-grow: 1; margin-right: 15px; }
+        .profit { font-weight: 800; font-size: 1rem; display: block; }
+        .btn-s { background: var(--success); color: white; border: none; padding: 8px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .btn-d { background: rgba(239, 68, 68, 0.1); color: var(--danger); border: 1px solid var(--danger); padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+        .val-num { font-weight: 700; font-size: 1.1rem; }
+        @media (max-width: 480px) { .input-row { grid-template-columns: 1fr; } .suggestions { width: 90%; } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <div class="header-top">
+            <h1 style="font-size: 1.1rem; color: var(--primary);">ZERO CLOUD</h1>
+            <div class="gb-box">1 GB: <input type="number" id="cfgGb" step="0.01" value="350"> TL</div>
+        </div>
+        <div class="summary-grid">
+            <div class="stat"><small id="sumLabel">DURUM</small><span id="totalM" class="val-num">0 M</span></div>
+            <div class="stat"><small>HASSAS TL</small><span id="totalTL" class="val-num">0.00 TL</span></div>
+        </div>
+    </div>
+
+    <div class="filter-card" id="filterArea" style="display: none;">
+        <input type="date" id="fStart" onchange="render()">
+        <input type="date" id="fEnd" onchange="render()">
+    </div>
+
+    <div class="input-card">
+        <div class="input-row">
+            <div style="position: relative;">
+                <input type="text" id="inName" placeholder="İtem Adı" oninput="showSuggestions(this.value)" autocomplete="off">
+                <div id="suggestionBox" class="suggestions"></div>
+            </div>
+            <input type="text" id="inBuy" placeholder="Fiyat (M veya G)">
+            <input type="date" id="inDate">
+        </div>
+        <button class="add-btn" onclick="add()">Buluta Gönder</button>
+    </div>
+
+    <div class="tabs">
+        <div class="tab active" id="tActive" onclick="setTab('active')">Pazarda</div>
+        <div class="tab" id="tSold" onclick="setTab('sold')">Tamamlanmış</div>
+    </div>
+    <div id="mainList"></div>
+</div>
+
+<script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyA_dk3nSIYUGasKVwrbhpmWeRjU8F-Zis8",
+      authDomain: "zeropazar-51626.firebaseapp.com",
+      databaseURL: "https://zeropazar-51626-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "zeropazar-51626",
+      storageBucket: "zeropazar-51626.firebasestorage.app",
+      messagingSenderId: "475243592150",
+      appId: "1:475243592150:web:58963bb8fab4cfcddc8c77"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    let items = [];
+    let currentTab = 'active';
+
+    document.getElementById('inDate').valueAsDate = new Date();
+    const today = new Date();
+    document.getElementById('fStart').value = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+    document.getElementById('fEnd').value = today.toISOString().split('T')[0];
+
+    function parseInput(val) {
+        if (!val) return 0;
+        let clean = val.toString().toLowerCase().replace(',', '.');
+        if (clean.includes('g')) {
+            return parseFloat(clean.replace('gb', '').replace('g', '')) * 100;
+        }
+        return parseFloat(clean);
+    }
+
+    function formatNoah(m) {
+        const val = Math.abs(m);
+        const sign = m < 0 ? "-" : "";
+        if (val >= 1000) return sign + (val / 100).toFixed(2) + " GB";
+        return sign + val.toFixed(1) + " M";
+    }
+
+    function showSuggestions(val) {
+        const box = document.getElementById('suggestionBox');
+        if (!val) { box.style.display = 'none'; return; }
+        const uniqueNames = [...new Set(items.map(i => i.name))];
+        const filtered = uniqueNames.filter(n => n.toLowerCase().includes(val.toLowerCase())).slice(0, 5);
+        box.innerHTML = filtered.map(n => `<div class="suggestion-item" onclick="selectName('${n}')">${n}</div>`).join('');
+        box.style.display = filtered.length ? 'block' : 'none';
+    }
+
+    function selectName(n) { document.getElementById('inName').value = n; document.getElementById('suggestionBox').style.display = 'none'; }
+
+    db.ref('pazarData').on('value', snap => { 
+        items = snap.val() ? Object.keys(snap.val()).map(k => ({...snap.val()[k], fbId: k})) : []; 
+        render(); 
+    });
+
+    db.ref('gbSetting').on('value', snap => { 
+        if(snap.val()) document.getElementById('cfgGb').value = snap.val(); 
+        render(); 
+    });
+
+    document.getElementById('cfgGb').oninput = () => db.ref('gbSetting').set(document.getElementById('cfgGb').value);
+
+    function setTab(t) { 
+        currentTab = t; 
+        document.querySelectorAll('.tab').forEach(x => x.classList.remove('active')); 
+        document.getElementById('t'+t.charAt(0).toUpperCase()+t.slice(1)).classList.add('active'); 
+        document.getElementById('filterArea').style.display = (t === 'sold') ? 'grid' : 'none'; 
+        render(); 
+    }
+
+    function render() {
+        const listDiv = document.getElementById('mainList');
+        const gb = parseFloat(document.getElementById('cfgGb').value) || 0;
+        const start = document.getElementById('fStart').value;
+        const end = document.getElementById('fEnd').value;
+        listDiv.innerHTML = '';
+        let totalValM = 0;
+        
+        const sumLabel = document.getElementById('sumLabel');
+        const totalMEl = document.getElementById('totalM');
+        const totalTLEl = document.getElementById('totalTL');
+
+        sumLabel.innerText = (currentTab === 'active') ? 'ENVANTER MALİYETİ' : 'TOPLAM KÂR';
+
+        items.slice().reverse().forEach(item => {
+            if (currentTab === 'sold' && (item.sDate < start || item.sDate > end)) return;
+            if (item.status !== currentTab) return;
+            let profitM = (currentTab === 'sold') ? (item.sell - item.buy) : item.buy;
+            totalValM += profitM;
+
+            const card = document.createElement('div');
+            card.className = 'item-card';
+
+            const info = `<div><b style="color:${currentTab === 'active' ? 'var(--danger)' : 'var(--primary)'}">${item.name}</b>
+                <div style="font-size:0.8rem;">${formatNoah(item.buy)} ${item.sell ? ' → ' + formatNoah(item.sell) : ''}</div>
+                <div style="font-size:0.7rem; color:var(--muted);">${currentTab==='sold'?'Satış: '+item.sDate:'Giriş: '+item.bDate}</div></div>`;
+
+            const profitColor = profitM >= 0 ? 'var(--success)' : 'var(--danger)';
+            const result = `<div class="item-result">${currentTab==='sold' ? 
+                '<span class="profit" style="color:'+profitColor+'">'+(profitM>=0?'+ ':'- ')+formatNoah(Math.abs(profitM))+'</span><span style="font-size:0.7rem; color:'+profitColor+'; font-weight:600;">'+((profitM/100)*gb).toLocaleString('tr-TR',{minimumFractionDigits:2})+' TL</span>' : 
+                '<span style="color:var(--muted); font-size:0.8rem;">Bekliyor</span>'}</div>`;
+            
+            const btnContainer = document.createElement('div');
+            btnContainer.className = 'btn-group';
+
+            if(currentTab === 'active') {
+                const sellBtn = document.createElement('button');
+                sellBtn.className = 'btn-s';
+                sellBtn.innerText = 'SAT';
+                sellBtn.onclick = () => sellItemUI(item.fbId);
+                btnContainer.appendChild(sellBtn);
+            }
+
+            const delBtn = document.createElement('button');
+            delBtn.className = 'btn-d';
+            delBtn.innerText = '×';
+            delBtn.onclick = () => del(item.fbId);
+            btnContainer.appendChild(delBtn);
+
+            card.innerHTML = info + result;
+            card.appendChild(btnContainer);
+            listDiv.appendChild(card);
+        });
+        
+        totalMEl.innerText = formatNoah(totalValM);
+        const finalTL = (totalValM / 100) * gb;
+        totalTLEl.innerText = finalTL.toLocaleString('tr-TR', {minimumFractionDigits: 2}) + " TL";
+
+        // Üst panel renk mantığı
+        if (currentTab === 'active') {
+            totalMEl.style.color = 'var(--text)';
+            totalTLEl.style.color = 'var(--text)';
+        } else {
+            const finalColor = totalValM >= 0 ? 'var(--success)' : 'var(--danger)';
+            totalMEl.style.color = finalColor;
+            totalTLEl.style.color = finalColor;
+        }
+    }
+
+    function add() {
+        const name = document.getElementById('inName').value;
+        const buy = parseInput(document.getElementById('inBuy').value);
+        const bDate = document.getElementById('inDate').value;
+        if(name && buy) { 
+            db.ref('pazarData').push({ name, buy, bDate, status: 'active', sell: 0, sDate: '' }); 
+            document.getElementById('inName').value = ''; 
+            document.getElementById('inBuy').value = ''; 
+        }
+    }
+
+    function sellItemUI(id) {
+        const val = prompt("Satış Fiyatı (Örn: 150 veya 2.5g):");
+        if (!val) return;
+        const sell = parseInput(val);
+        const sDate = prompt("Satış Tarihi:", new Date().toISOString().split('T')[0]);
+        if (sDate) db.ref('pazarData/' + id).update({ sell, status: 'sold', sDate });
+    }
+
+    function del(id) { 
+        if(confirm("Silinecek?")) {
+            db.ref('pazarData/' + id).remove();
+        }
+    }
+</script>
+</body>
+</html>
